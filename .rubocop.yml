@@ -32,6 +32,8 @@ RSpec/MultipleExpectations:
 
 RSpec/ExampleLength:
   Max: 15
+  Exclude:
+    - spec/live/**/*
 
 # Connection#initialize takes the documented keyword configuration set.
 Metrics/ParameterLists:
