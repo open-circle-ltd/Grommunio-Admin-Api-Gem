@@ -33,3 +33,7 @@ Metrics/ParameterLists:
 
 Metrics/ClassLength:
   Max: 150
+
+# Client#initialize is a keyword-configuration passthrough to Connection.
+Metrics/MethodLength:
+  Max: 12
