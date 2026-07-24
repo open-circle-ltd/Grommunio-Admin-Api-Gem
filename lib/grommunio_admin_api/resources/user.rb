@@ -2,6 +2,13 @@
 
 module GrommunioAdminApi
   module Resources
+    # A user-shaped payload becomes a typed User; anything else (e.g. a
+    # message-only success from import/downsync) stays a generic Resource
+    # without losing data.
+    def self.wrap_user_or_generic(body)
+      body.is_a?(Hash) && body.key?("ID") ? User.new(body) : Resource.new(body)
+    end
+
     class User < Resource
       # Documented upstream status values. A status-0 object is an account
       # candidate — it does not guarantee a mailbox store exists.

@@ -8,22 +8,17 @@ module GrommunioAdminApi
   class Client
     MODES = %i[read_only sync_only].freeze
 
-    attr_reader :mode, :organizations, :domains, :users
+    attr_reader :mode, :organizations, :domains, :users, :ldap
 
     def initialize(base_url:, username: nil, password: nil, mode: :read_only, **)
       raise ArgumentError, "unsupported mode: #{mode.inspect}" unless MODES.include?(mode)
 
       @mode = mode
-      @connection = Connection.new(
-        base_url: base_url,
-        username: username,
-        password: password,
-        mode: mode,
-        **
-      )
+      @connection = Connection.new(base_url:, username:, password:, mode:, **)
       @organizations = Api::Organizations.new(@connection)
       @domains = Api::Domains.new(@connection)
       @users = Api::Users.new(@connection)
+      @ldap = Api::Ldap.new(@connection)
     end
 
     # POST /login — establishes the JWT-cookie and CSRF session.

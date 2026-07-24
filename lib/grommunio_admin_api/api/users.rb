@@ -29,6 +29,17 @@ module GrommunioAdminApi
           list(domain_id: domain_id, limit: limit, offset: offset)
         end
       end
+
+      # PUT /domains/{domainID}/users/{userID}/downsync — refresh one
+      # existing Grommunio user from LDAP.
+      #
+      # @return [Resources::User] when the server returns user data,
+      #   [Resource] for a message-only response
+      def downsync(domain_id:, user_id:, ldap_object_id: nil, language: nil)
+        body = connection.request(:put, "/domains/#{domain_id}/users/#{user_id}/downsync",
+                                  query: { ID: ldap_object_id, lang: language })
+        Resources.wrap_user_or_generic(body)
+      end
     end
   end
 end
