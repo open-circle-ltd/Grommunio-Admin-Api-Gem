@@ -19,10 +19,12 @@ module GrommunioAdminApi
       @raw["count"]
     end
 
+    # Iterates over the wrapped resources of this page.
     def each(&)
       data.each(&)
     end
 
+    # Number of items on this page (not the overall total).
     def size
       data.size
     end

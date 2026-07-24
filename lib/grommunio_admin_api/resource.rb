@@ -58,6 +58,8 @@ module GrommunioAdminApi
       @raw
     end
 
+    # Value equality with resources of the same class and, for ergonomic
+    # assertions, with plain hashes (compares #raw).
     def ==(other)
       return raw == other if other.is_a?(Hash)
 
@@ -65,6 +67,7 @@ module GrommunioAdminApi
     end
     alias eql? ==
 
+    # Consistent with #eql? for Hash-key usage.
     def hash
       [self.class, raw].hash
     end

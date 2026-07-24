@@ -2,6 +2,7 @@
 
 module GrommunioAdminApi
   module Resources
+    # One domain from /system/domains.
     class Domain < Resource
       field :id, key: "ID"
       field :organization_id, key: "orgID"

@@ -2,6 +2,7 @@
 
 module GrommunioAdminApi
   module Resources
+    # One organization from /system/orgs.
     class Organization < Resource
       field :id, key: "ID"
       field :name

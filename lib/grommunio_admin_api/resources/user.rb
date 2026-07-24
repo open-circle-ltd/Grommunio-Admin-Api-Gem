@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 module GrommunioAdminApi
+  # Typed value objects over the V1 response shapes.
   module Resources
     # A user-shaped payload becomes a typed User; anything else (e.g. a
     # message-only success from import/downsync) stays a generic Resource
@@ -9,6 +10,7 @@ module GrommunioAdminApi
       body.is_a?(Hash) && body.key?("ID") ? User.new(body) : Resource.new(body)
     end
 
+    # One user, shared mailbox, or contact from /domains/{domainID}/users.
     class User < Resource
       # Documented upstream status values. A status-0 object is an account
       # candidate — it does not guarantee a mailbox store exists.
