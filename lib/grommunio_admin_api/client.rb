@@ -8,7 +8,7 @@ module GrommunioAdminApi
   class Client
     MODES = %i[read_only sync_only].freeze
 
-    attr_reader :mode, :organizations, :domains
+    attr_reader :mode, :organizations, :domains, :users
 
     def initialize(base_url:, username: nil, password: nil, mode: :read_only, **)
       raise ArgumentError, "unsupported mode: #{mode.inspect}" unless MODES.include?(mode)
@@ -23,6 +23,7 @@ module GrommunioAdminApi
       )
       @organizations = Api::Organizations.new(@connection)
       @domains = Api::Domains.new(@connection)
+      @users = Api::Users.new(@connection)
     end
 
     # POST /login — establishes the JWT-cookie and CSRF session.
