@@ -19,3 +19,17 @@ Style/Documentation:
 RSpec/DescribeClass:
   Exclude:
     - spec/contract/**/*
+
+# HTTP client specs assert both the outgoing request and the returned value.
+RSpec/MultipleExpectations:
+  Max: 4
+
+RSpec/ExampleLength:
+  Max: 15
+
+# Connection#initialize takes the documented keyword configuration set.
+Metrics/ParameterLists:
+  CountKeywordArgs: false
+
+Metrics/ClassLength:
+  Max: 150

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "grommunio_admin_api"
+require "webmock/rspec"
 
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure
