@@ -15,14 +15,20 @@ Style/StringLiteralsInInterpolation:
 Style/Documentation:
   Enabled: false
 
-# Contract specs describe the API surface, not a single class.
+# Contract and live specs describe surfaces/flows, not a single class, and
+# live examples verify one end-to-end sequence per network session.
 RSpec/DescribeClass:
   Exclude:
     - spec/contract/**/*
+    - spec/live/**/*
 
-# HTTP client specs assert both the outgoing request and the returned value.
+
+# HTTP client specs assert both the outgoing request and the returned value;
+# live examples verify one end-to-end sequence per network session.
 RSpec/MultipleExpectations:
   Max: 4
+  Exclude:
+    - spec/live/**/*
 
 RSpec/ExampleLength:
   Max: 15
