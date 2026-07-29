@@ -3,10 +3,15 @@
 module GrommunioAdminApi
   # Offset-based auto-pagination over the paginated list endpoints.
   #
-  # Never truncates silently: pages are fetched until a page comes back
-  # shorter than requested or the server-reported total is reached.
+  # Never truncates silently: when the server reports a total, pages are
+  # fetched until that total is reached — a page shorter than requested only
+  # ends the run when no total is available, because servers may clamp the
+  # requested limit. An empty page always ends the run so a total that
+  # overstates the available data cannot spin forever.
   module Pagination
-    DEFAULT_PAGE_SIZE = 100
+    # Matches the server-side default limit of the admin-api list endpoints,
+    # so a clamped page cannot be mistaken for the last page.
+    DEFAULT_PAGE_SIZE = 50
 
     module_function
 
@@ -24,7 +29,8 @@ module GrommunioAdminApi
           page = fetch_page.call(page_size, offset)
           page.each { |item| yielder << item }
           offset += page.size
-          break if page.size < page_size || (page.total_count && offset >= page.total_count)
+          break if page.empty?
+          break if page.total_count ? offset >= page.total_count : page.size < page_size
         end
       end.lazy
     end

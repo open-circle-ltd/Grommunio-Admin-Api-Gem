@@ -103,9 +103,11 @@ All errors inherit from `GrommunioAdminApi::Error`:
 
 `list` returns one `List` page (`Enumerable`, `#total_count`, `#raw`).
 `all` returns a lazy enumerator that fetches pages of `page_size`
-(default 100) on demand — `all.first(5)` fetches one page, iteration stops
-only when the server-reported total is reached or a page comes back short,
-so results are never silently truncated.
+(default 50, matching the server-side default limit) on demand —
+`all.first(5)` fetches one page. When the server reports a total, iteration
+continues until that total is reached; a short page ends the run only when
+no total is available, so a server that clamps the requested limit cannot
+cause silent truncation. An empty page always ends the run.
 
 ### Immutable resources and raw access
 

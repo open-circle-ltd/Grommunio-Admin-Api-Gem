@@ -63,6 +63,29 @@ RSpec.describe GrommunioAdminApi::Pagination do
     expect(items.to_a.size).to eq(5)
   end
 
+  it "keeps paging when the server clamps the page size below the requested limit" do
+    calls = []
+    items = described_class.each_item(page_size: 4) do |limit, offset|
+      calls << [limit, offset]
+      # Server caps every page at 2 items but reports the real total.
+      list([1, 2, 3, 4, 5].drop(offset).take(2), count: 5)
+    end
+
+    expect(items.map { |r| r["ID"] }.to_a).to eq([1, 2, 3, 4, 5])
+    expect(calls).to eq([[4, 0], [4, 2], [4, 4]])
+  end
+
+  it "stops on an empty page even when the reported total is higher" do
+    calls = 0
+    items = described_class.each_item(page_size: 2) do |_limit, offset|
+      calls += 1
+      offset.zero? ? list([1, 2], count: 10) : list([], count: 10)
+    end
+
+    expect(items.to_a.size).to eq(2)
+    expect(calls).to eq(2)
+  end
+
   it "rejects a non-positive page size" do
     expect { described_class.each_item(page_size: 0) { |_l, _o| list([]) } }.to raise_error(ArgumentError)
   end
