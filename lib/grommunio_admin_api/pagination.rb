@@ -29,10 +29,16 @@ module GrommunioAdminApi
           page = fetch_page.call(page_size, offset)
           page.each { |item| yielder << item }
           offset += page.size
-          break if page.empty?
-          break if page.total_count ? offset >= page.total_count : page.size < page_size
+          break if last_page?(page, offset, page_size)
         end
       end.lazy
     end
+
+    def last_page?(page, offset, page_size)
+      return true if page.empty?
+
+      page.total_count ? offset >= page.total_count : page.size < page_size
+    end
+    private_class_method :last_page?
   end
 end

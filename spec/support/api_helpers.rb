@@ -25,6 +25,12 @@ module ApiHelpers
     stub = stub.with(query: query) if query
     stub.to_return(status: 200, body: JSON.generate(body))
   end
+
+  # Proves a guard rejected an operation before opening a socket — no login
+  # request either.
+  def expect_no_http_requests
+    expect(a_request(:any, /.+/)).not_to have_been_made
+  end
 end
 
 RSpec.configure do |config|

@@ -38,17 +38,23 @@ module GrommunioAdminApi
     # Normalizes the configured base URL: collapses duplicate slashes, strips
     # trailing slashes, and appends /api/v1 when no path is given.
     def self.normalize_base_url(raw)
-      url = raw.to_s.strip
-      scheme, rest = url.split("://", 2)
-      unless %w[http https].include?(scheme) && rest && !rest.empty?
-        raise ArgumentError, "base_url must include an http or https scheme, e.g. https://mail.example.com:8443"
+      scheme, rest = raw.to_s.strip.split("://", 2)
+      host, path = rest.to_s.split("/", 2)
+      unless %w[http https].include?(scheme.to_s.downcase) && !host.to_s.empty?
+        raise ArgumentError,
+              "base_url must include an http or https scheme and a host, e.g. https://mail.example.com:8443"
       end
 
-      host, path = rest.split("/", 2)
-      segments = path.to_s.split("/").reject(&:empty?)
-      segments = %w[api v1] if segments.empty?
-      "#{scheme}://#{host}/#{segments.join("/")}"
+      "#{scheme.downcase}://#{host}/#{normalize_path(path)}"
     end
+
+    # Keeps a configured path verbatim (case included) and falls back to the
+    # standard /api/v1 prefix when none is given.
+    def self.normalize_path(path)
+      segments = path.to_s.split("/").reject(&:empty?)
+      segments.empty? ? "api/v1" : segments.join("/")
+    end
+    private_class_method :normalize_path
 
     def initialize(base_url:, username: nil, password: nil, mode: :read_only,
                    verify_ssl: true, open_timeout: 5, read_timeout: 60)
@@ -84,7 +90,8 @@ module GrommunioAdminApi
     end
 
     # POST /login with form-encoded credentials; stores the JWT cookie value
-    # and CSRF token for subsequent requests.
+    # and CSRF token for subsequent requests. Returns true rather than the
+    # response body so callers cannot log the session token by accident.
     def login!
       raise AuthenticationError.new("cannot login: no credentials configured", status: nil, body: nil) if @username.nil?
 
@@ -97,7 +104,7 @@ module GrommunioAdminApi
 
       @jwt = body["grommunioAuthJwt"]
       @csrf = body["csrf"]
-      body
+      true
     end
 
     def logged_in?
@@ -142,6 +149,8 @@ module GrommunioAdminApi
       compacted = query&.compact
       uri.query = URI.encode_www_form(compacted) unless compacted.nil? || compacted.empty?
       uri
+    rescue URI::InvalidURIError
+      raise ArgumentError, "invalid request path: #{path.inspect}"
     end
 
     def build_request(method, uri, form: nil)

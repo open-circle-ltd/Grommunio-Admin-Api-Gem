@@ -9,7 +9,7 @@ RSpec.describe GrommunioAdminApi::Api::Ldap do
         client.ldap.import_user(ldap_object_id: "id", domain_id: 12, organization_id: 12)
       end.to raise_error(GrommunioAdminApi::ReadOnlyModeError)
 
-      expect(WebMock::RequestRegistry.instance.requested_signatures.hash.keys).to be_empty
+      expect_no_http_requests
     end
 
     it "rejects users.downsync before any socket access, including login" do
@@ -17,7 +17,7 @@ RSpec.describe GrommunioAdminApi::Api::Ldap do
         client.users.downsync(domain_id: 12, user_id: 44)
       end.to raise_error(GrommunioAdminApi::ReadOnlyModeError)
 
-      expect(WebMock::RequestRegistry.instance.requested_signatures.hash.keys).to be_empty
+      expect_no_http_requests
     end
   end
 
@@ -54,7 +54,7 @@ RSpec.describe GrommunioAdminApi::Api::Ldap do
           connection.request(method, path)
         end.to raise_error(GrommunioAdminApi::SyncOperationNotAllowedError)
 
-        expect(WebMock::RequestRegistry.instance.requested_signatures.hash.keys).to be_empty
+        expect_no_http_requests
       end
     end
   end
@@ -86,7 +86,7 @@ RSpec.describe GrommunioAdminApi::Api::Ldap do
 
     it "requires at least three non-whitespace characters without any HTTP request" do
       expect { client.ldap.search(query: " a b ") }.to raise_error(ArgumentError, /three/)
-      expect(WebMock::RequestRegistry.instance.requested_signatures.hash.keys).to be_empty
+      expect_no_http_requests
     end
   end
 

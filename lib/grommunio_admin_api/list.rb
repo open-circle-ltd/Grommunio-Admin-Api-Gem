@@ -28,7 +28,6 @@ module GrommunioAdminApi
     def size
       data.size
     end
-    alias length size
 
     def empty?
       data.empty?

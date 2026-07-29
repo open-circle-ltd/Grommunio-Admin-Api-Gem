@@ -67,15 +67,89 @@ RSpec.describe GrommunioAdminApi::Connection do
       conn = described_class.new(base_url: "https://mail.example.test//api/v1/")
       expect(conn.base_url).to eq("https://mail.example.test/api/v1")
     end
+
+    it "keeps an explicitly configured path instead of appending /api/v1" do
+      conn = described_class.new(base_url: "https://mail.example.test/admin/api/v1")
+      expect(conn.base_url).to eq("https://mail.example.test/admin/api/v1")
+    end
+
+    it "preserves the case of a configured path" do
+      conn = described_class.new(base_url: "https://mail.example.test/Admin/APIv1")
+      expect(conn.base_url).to eq("https://mail.example.test/Admin/APIv1")
+    end
+
+    it "accepts an uppercase scheme" do
+      conn = described_class.new(base_url: "HTTPS://mail.example.test")
+      expect(conn.base_url).to eq("https://mail.example.test/api/v1")
+    end
+
+    it "requires a host" do
+      expect { described_class.new(base_url: "https:///api/v1") }.to raise_error(ArgumentError, /host/)
+    end
+
+    it "rejects a scheme without any host at all" do
+      expect { described_class.new(base_url: "https://") }.to raise_error(ArgumentError, /host/)
+    end
+
+    it "rejects a nil base_url" do
+      expect { described_class.new(base_url: nil) }.to raise_error(ArgumentError, /scheme/)
+    end
+  end
+
+  describe "TLS and timeout configuration" do
+    it "verifies peer certificates by default" do
+      http = connection.send(:http, URI("https://mail.example.test/api/v1"))
+
+      expect(http.verify_mode).to eq(OpenSSL::SSL::VERIFY_PEER)
+    end
+
+    it "disables verification when verify_ssl is false" do
+      http = build_connection(verify_ssl: false).send(:http, URI("https://mail.example.test/api/v1"))
+
+      expect(http.verify_mode).to eq(OpenSSL::SSL::VERIFY_NONE)
+    end
+
+    it "applies the configured timeouts" do
+      http = build_connection(open_timeout: 3, read_timeout: 30)
+             .send(:http, URI("https://mail.example.test/api/v1"))
+
+      expect(http.open_timeout).to eq(3)
+      expect(http.read_timeout).to eq(30)
+    end
+
+    it "defaults the timeouts" do
+      expect(connection).to have_attributes(open_timeout: 5, read_timeout: 60)
+    end
   end
 
   describe "authentication" do
-    it "logs in with form encoded credentials" do
+    it "logs in with form encoded credentials, even in read_only mode" do
       login = stub_login
 
-      connection.login!
-
+      expect(connection.login!).to be(true)
+      expect(connection.mode).to eq(:read_only)
       expect(login).to have_been_requested.once
+    end
+
+    it "does not return the session token" do
+      stub_login
+
+      expect(connection.login!).not_to be_a(Hash)
+    end
+
+    it "raises AuthenticationError without credentials and opens no socket" do
+      conn = described_class.new(base_url: "https://mail.example.test")
+
+      expect { conn.login! }.to raise_error(GrommunioAdminApi::AuthenticationError, /credentials/)
+      expect_no_http_requests
+    end
+
+    it "permits reads in sync_only mode" do
+      stub_login
+      status = stub_request(:get, "#{base}/status").to_return(status: 200, body: '{"status":"ok"}')
+
+      expect(build_connection(mode: :sync_only).request(:get, "/status")).to eq("status" => "ok")
+      expect(status).to have_been_requested.once
     end
 
     it "sends the JWT cookie on authenticated reads" do
@@ -170,12 +244,13 @@ RSpec.describe GrommunioAdminApi::Connection do
         stub_request(:get, "#{base}/status")
           .to_return(status: status, body: JSON.generate("message" => "upstream says no"))
 
-        connection.request(:get, "/status")
-        raise "expected #{error_class} to be raised"
-      rescue error_class => e
-        expect(e.status).to eq(status)
-        expect(e.body).to eq("message" => "upstream says no")
-        expect(e.server_message).to eq("upstream says no")
+        expect { connection.request(:get, "/status") }.to raise_error(error_class) do |error|
+          expect(error).to have_attributes(
+            status: status,
+            body: { "message" => "upstream says no" },
+            server_message: "upstream says no"
+          )
+        end
       end
     end
 
@@ -190,8 +265,13 @@ RSpec.describe GrommunioAdminApi::Connection do
     end
 
     it "maps Net::ReadTimeout to ConnectionError" do
-      stub_request(:get, "#{base}/status").to_timeout
+      stub_request(:get, "#{base}/status").to_raise(Net::ReadTimeout)
       expect { connection.request(:get, "/status") }.to raise_error(GrommunioAdminApi::ConnectionError)
+    end
+
+    it "maps an unusable request path to ArgumentError" do
+      expect { connection.request(:get, "/domains/a b|c/users") }
+        .to raise_error(ArgumentError, /invalid request path/)
     end
 
     it "maps invalid JSON on 2xx to ParseError" do

@@ -46,4 +46,25 @@ RSpec.describe GrommunioAdminApi::Resource do
   it "holds no client or connection reference" do
     expect(resource.instance_variables).to contain_exactly(:@raw)
   end
+
+  describe "value equality" do
+    it "equals another resource of the same class with the same payload" do
+      twin = described_class.new(payload.dup)
+
+      expect(resource).to eq(twin)
+      expect(resource.eql?(twin)).to be(true)
+      expect(resource.hash).to eq(twin.hash)
+    end
+
+    it "does not equal a plain hash or a different resource class" do
+      other_class = Class.new(described_class).new(payload.dup)
+
+      expect(resource).not_to eq(payload)
+      expect(resource).not_to eq(other_class)
+    end
+
+    it "deduplicates equal resources in a Set" do
+      expect(Set[resource, described_class.new(payload.dup)].size).to eq(1)
+    end
+  end
 end

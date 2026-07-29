@@ -10,7 +10,7 @@ RSpec.describe "live V1 reads", :live do
   let(:client) { live_client(mode: :read_only) }
 
   it "verifies the complete V1 read surface" do
-    expect(client.login!).to include("csrf")
+    expect(client.login!).to be(true)
     expect(client.status).to be_a(Hash)
     expect(client.about).to include("API")
 

@@ -112,7 +112,7 @@ RSpec.describe GrommunioAdminApi::Api::Users do
         properties: { "displayname" => "Test User" }, roles: [],
         maildir: "/var/lib/gromox/user/1/2", lang: "de_DE", homeserver: nil
       )
-      expect(WebMock::RequestRegistry.instance.requested_signatures.hash.keys).to be_empty
+      expect_no_http_requests
     end
   end
 end

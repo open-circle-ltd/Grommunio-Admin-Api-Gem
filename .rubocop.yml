@@ -15,13 +15,16 @@ Style/StringLiteralsInInterpolation:
 Style/Documentation:
   Enabled: false
 
+# A bang method returning true reports success; it is a command, not a query.
+Naming/PredicateMethod:
+  AllowBangMethods: true
+
 # Contract and live specs describe surfaces/flows, not a single class, and
 # live examples verify one end-to-end sequence per network session.
 RSpec/DescribeClass:
   Exclude:
     - spec/contract/**/*
     - spec/live/**/*
-
 
 # HTTP client specs assert both the outgoing request and the returned value;
 # live examples verify one end-to-end sequence per network session.
@@ -35,13 +38,13 @@ RSpec/ExampleLength:
   Exclude:
     - spec/live/**/*
 
-# Connection#initialize takes the documented keyword configuration set.
+# This gem configures behaviour through keyword arguments, which are
+# self-documenting; the cop targets long positional lists.
 Metrics/ParameterLists:
   CountKeywordArgs: false
 
+# Connection carries the session lifecycle, the mutation policy, and the
+# status mapping in one transport class.
 Metrics/ClassLength:
-  Max: 150
-
-# Client#initialize is a keyword-configuration passthrough to Connection.
-Metrics/MethodLength:
-  Max: 12
+  Exclude:
+    - lib/grommunio_admin_api/connection.rb

@@ -19,7 +19,7 @@ Requires Ruby >= 3.2.
 
 ```ruby
 client = GrommunioAdminApi::Client.new(
-  base_url: "https://mail.example.com:8443", # /api/v1 is appended automatically
+  base_url: "https://mail.example.com:8443", # /api/v1 appended when no path is given
   username: "admin",
   password: "secret"
   # mode: :read_only is the default
@@ -67,8 +67,10 @@ Login (`POST /login`, form-encoded) happens lazily before the first request
 and can be forced with `client.login!`. The JWT cookie is sent on every
 authenticated request, the CSRF token on writes. After a 401 the client
 re-logs-in and replays the request exactly once; a second 401 raises
-`AuthenticationError`. Passwords and tokens never appear in `inspect`,
-`to_s`, or error messages.
+`AuthenticationError`, as does a login response that carries no session
+token. Passwords and tokens never appear in `inspect`, `to_s`, or error
+messages — `login!` returns `true` rather than the response body, so the
+token cannot be logged by accident.
 
 ### V1 operation index
 
@@ -93,12 +95,17 @@ All errors inherit from `GrommunioAdminApi::Error`:
 
 - `ApiError` (has `status`, `body`, `server_message`) with subclasses
   `ValidationError` (400/422), `AuthenticationError` (401),
-  `ForbiddenError` (403), `NotFoundError` (404), `ClientError` (other 4xx),
+  `ForbiddenError` (403), `NotFoundError` (404), `ClientError` (any other
+  non-2xx below 500, including 3xx — redirects are never followed),
   `ServerError` (5xx), `ServiceUnavailableError` (503, subclass of ServerError)
 - `ConnectionError` — DNS, refused, reset, TLS, timeout
 - `ParseError` — 2xx response body that is not valid JSON
 - `ReadOnlyModeError`, `SyncOperationNotAllowedError` — mutation policy,
   raised before any socket access
+
+Caller mistakes raise plain `ArgumentError` instead: an unsupported `mode`,
+a `base_url` without scheme or host, an unusable request path, or an LDAP
+query shorter than three non-whitespace characters.
 
 ### Pagination
 
