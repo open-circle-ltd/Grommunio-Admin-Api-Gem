@@ -27,11 +27,14 @@ module GrommunioAdminApi
         Resources::Domain.new(connection.request(:get, "/system/domains/#{domain_id}"))
       end
 
-      # Lazily enumerates every domain across all pages.
+      # Lazily enumerates every domain across all pages, applying the same
+      # filters as #list.
       #
       # @return [Enumerator::Lazy<Resources::Domain>]
-      def all(page_size: Pagination::DEFAULT_PAGE_SIZE)
-        Pagination.each_item(page_size: page_size) { |limit, offset| list(limit: limit, offset: offset) }
+      def all(organization_ids: nil, statuses: nil, page_size: Pagination::DEFAULT_PAGE_SIZE)
+        Pagination.each_item(page_size: page_size) do |limit, offset|
+          list(organization_ids: organization_ids, statuses: statuses, limit: limit, offset: offset)
+        end
       end
     end
   end

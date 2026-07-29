@@ -21,12 +21,13 @@ module GrommunioAdminApi
         Resources::User.new(body)
       end
 
-      # Lazily enumerates every user of one domain across all pages.
+      # Lazily enumerates every user of one domain across all pages, applying
+      # the same filters as #list.
       #
       # @return [Enumerator::Lazy<Resources::User>]
-      def all(domain_id:, page_size: Pagination::DEFAULT_PAGE_SIZE)
+      def all(domain_id:, level: nil, username: nil, page_size: Pagination::DEFAULT_PAGE_SIZE)
         Pagination.each_item(page_size: page_size) do |limit, offset|
-          list(domain_id: domain_id, limit: limit, offset: offset)
+          list(domain_id: domain_id, level: level, username: username, limit: limit, offset: offset)
         end
       end
 

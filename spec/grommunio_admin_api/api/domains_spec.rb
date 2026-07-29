@@ -52,4 +52,18 @@ RSpec.describe GrommunioAdminApi::Api::Domains do
 
     expect(client.domains.all(page_size: 2).map(&:id).to_a).to eq([1, 2, 3])
   end
+
+  it "forwards the list filters to every page request" do
+    query = { "orgID" => "12,13", "domainStatus" => "0" }
+    page1 = stub_get("/system/domains", { "count" => 3, "data" => [{ "ID" => 1 }, { "ID" => 2 }] },
+                     query: query.merge("limit" => "2", "offset" => "0"))
+    page2 = stub_get("/system/domains", { "count" => 3, "data" => [{ "ID" => 3 }] },
+                     query: query.merge("limit" => "2", "offset" => "2"))
+
+    domains = client.domains.all(organization_ids: [12, 13], statuses: [0], page_size: 2).to_a
+
+    expect(domains.map(&:id)).to eq([1, 2, 3])
+    expect(page1).to have_been_requested.once
+    expect(page2).to have_been_requested.once
+  end
 end

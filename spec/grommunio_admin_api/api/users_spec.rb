@@ -62,6 +62,20 @@ RSpec.describe GrommunioAdminApi::Api::Users do
 
       expect(client.users.all(domain_id: 12, page_size: 2).map(&:id).to_a).to eq([1, 2, 3])
     end
+
+    it "forwards the list filters to every page request" do
+      query = { "level" => "2", "username" => "user@asc-test.ch" }
+      page1 = stub_get("/domains/12/users", { "count" => 3, "data" => [{ "ID" => 1 }, { "ID" => 2 }] },
+                       query: query.merge("limit" => "2", "offset" => "0"))
+      page2 = stub_get("/domains/12/users", { "count" => 3, "data" => [{ "ID" => 3 }] },
+                       query: query.merge("limit" => "2", "offset" => "2"))
+
+      users = client.users.all(domain_id: 12, level: 2, username: "user@asc-test.ch", page_size: 2).to_a
+
+      expect(users.map(&:id)).to eq([1, 2, 3])
+      expect(page1).to have_been_requested.once
+      expect(page2).to have_been_requested.once
+    end
   end
 
   describe "status predicates" do

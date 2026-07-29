@@ -32,9 +32,10 @@ client.about                                   # API/backend version diagnostics
 client.organizations.list(limit: 50)           # List<Organization>
 client.organizations.get(organization_id: 12)  # Organization
 client.domains.list(organization_ids: [12])    # List<Domain>
-client.domains.all.each { |domain| ... }       # lazy pagination over all pages
+client.domains.all(organization_ids: [12])     # lazy pagination over all pages
 client.users.list(domain_id: 12, level: 2)     # List<User>
 client.users.get(domain_id: 12, user_id: 44)   # User
+client.users.all(domain_id: 12, level: 2)      # every user of one domain
 ```
 
 ### Safety modes
@@ -102,7 +103,8 @@ All errors inherit from `GrommunioAdminApi::Error`:
 ### Pagination
 
 `list` returns one `List` page (`Enumerable`, `#total_count`, `#raw`).
-`all` returns a lazy enumerator that fetches pages of `page_size`
+`all` accepts the same filters as the matching `list` and returns a lazy
+enumerator that fetches pages of `page_size`
 (default 50, matching the server-side default limit) on demand —
 `all.first(5)` fetches one page. When the server reports a total, iteration
 continues until that total is reached; a short page ends the run only when
