@@ -16,13 +16,12 @@ Gem::Specification.new do |spec|
 
   spec.metadata["rubygems_mfa_required"] = "true"
 
-  # Specify which files should be added to the gem when it is released.
-  # The `git ls-files -z` loads the files in the RubyGem that have been added into git.
-  gemspec = File.basename(__FILE__)
+  # Ship the library plus licence and readme only. An allowlist keeps specs,
+  # tooling, and local configuration such as .env.example out of the package
+  # even when new files are added at the repository root.
   spec.files = IO.popen(%w[git ls-files -z], chdir: __dir__, err: IO::NULL) do |ls|
-    ls.readlines("\x0", chomp: true).reject do |f|
-      (f == gemspec) ||
-        f.start_with?(*%w[bin/ Gemfile .gitignore .rspec spec/ .rubocop.yml])
+    ls.readlines("\x0", chomp: true).select do |f|
+      f.start_with?("lib/") || %w[README.md LICENSE.txt].include?(f)
     end
   end
   spec.bindir = "exe"
