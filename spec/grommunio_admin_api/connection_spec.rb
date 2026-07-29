@@ -116,6 +116,25 @@ RSpec.describe GrommunioAdminApi::Connection do
       expect { connection.request(:get, "/status") }.to raise_error(GrommunioAdminApi::AuthenticationError)
     end
 
+    it "raises AuthenticationError when the login response has no body" do
+      stub_request(:post, "#{base}/login").to_return(status: 204, body: "")
+
+      expect { connection.login! }
+        .to raise_error(GrommunioAdminApi::AuthenticationError, /session token/)
+    end
+
+    it "raises AuthenticationError when the login response omits the session token" do
+      login = stub_request(:post, "#{base}/login")
+              .to_return(status: 200, body: JSON.generate("csrf" => csrf))
+      status = stub_request(:get, "#{base}/status").to_return(status: 200, body: "{}")
+
+      expect { connection.request(:get, "/status") }
+        .to raise_error(GrommunioAdminApi::AuthenticationError, /session token/)
+
+      expect(login).to have_been_requested.once
+      expect(status).not_to have_been_requested
+    end
+
     it "never exposes password, JWT, or CSRF through inspect, to_s, or errors" do
       stub_login
       stub_request(:get, "#{base}/status").to_return(status: 401, body: "{}")

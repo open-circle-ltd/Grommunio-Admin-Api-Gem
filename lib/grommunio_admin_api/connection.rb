@@ -91,6 +91,10 @@ module GrommunioAdminApi
       @jwt = nil
       @csrf = nil
       body = handle(:post, "/login", perform(:post, "/login", form: { user: @username, pass: @password }))
+      unless body.is_a?(Hash) && body["grommunioAuthJwt"]
+        raise AuthenticationError.new("login response did not include a session token", status: nil, body: nil)
+      end
+
       @jwt = body["grommunioAuthJwt"]
       @csrf = body["csrf"]
       body
