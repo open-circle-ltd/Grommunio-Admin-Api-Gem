@@ -29,6 +29,31 @@ RSpec.describe GrommunioAdminApi::Connection do
       )
   end
 
+  describe "mode validation" do
+    it "defaults to read_only" do
+      expect(connection.mode).to eq(:read_only)
+    end
+
+    it "rejects an unsupported mode" do
+      expect { build_connection(mode: :unrestricted) }.to raise_error(ArgumentError, /mode/)
+    end
+
+    it "rejects a string mode instead of treating it as an unknown mode" do
+      expect { build_connection(mode: "read_only") }.to raise_error(ArgumentError, /mode/)
+    end
+
+    it "blocks writes for any mode that is not sync_only" do
+      conn = build_connection
+      conn.instance_variable_set(:@mode, :some_future_mode)
+
+      expect do
+        conn.request(:post, "/domains/ldap/importUser")
+      end.to raise_error(GrommunioAdminApi::SyncOperationNotAllowedError)
+
+      expect(a_request(:any, /.+/)).not_to have_been_made
+    end
+  end
+
   describe "base URL normalization" do
     it "requires an http or https scheme" do
       expect { described_class.new(base_url: "mail.example.test") }.to raise_error(ArgumentError, /scheme/)

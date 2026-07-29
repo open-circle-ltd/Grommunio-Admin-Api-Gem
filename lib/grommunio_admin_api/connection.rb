@@ -14,6 +14,7 @@ module GrommunioAdminApi
   #
   # Not thread-safe: use one client per service or job.
   class Connection
+    MODES = %i[read_only sync_only].freeze
     MUTATING_METHODS = %i[post put patch delete].freeze
     SUCCESS_STATUSES = [200, 201, 202, 204].freeze
     STATUS_ERRORS = {
@@ -51,6 +52,8 @@ module GrommunioAdminApi
 
     def initialize(base_url:, username: nil, password: nil, mode: :read_only,
                    verify_ssl: true, open_timeout: 5, read_timeout: 60)
+      raise ArgumentError, "unsupported mode: #{mode.inspect}" unless MODES.include?(mode)
+
       @base_url = self.class.normalize_base_url(base_url)
       @username = username
       @password = password
@@ -106,16 +109,21 @@ module GrommunioAdminApi
 
     private
 
+    # Fail-closed: only sync_only may write, and only the allowlisted
+    # operations. Any other mode blocks every write.
     def guard_mutation!(method, path)
       return unless MUTATING_METHODS.include?(method)
 
-      if mode == :read_only
-        raise ReadOnlyModeError, "#{method.to_s.upcase} #{path} rejected: client is in read_only mode"
-      end
-      return if SYNC_ONLY_OPERATIONS.any? { |verb, pattern| verb == method && pattern.match?(path) }
+      operation = "#{method.to_s.upcase} #{path}"
+      raise ReadOnlyModeError, "#{operation} rejected: client is in read_only mode" if mode == :read_only
+      return if mode == :sync_only && sync_operation?(method, path)
 
       raise SyncOperationNotAllowedError,
-            "#{method.to_s.upcase} #{path} rejected: sync_only permits only targeted import and downsync"
+            "#{operation} rejected: mode #{mode.inspect} permits only targeted import and downsync"
+    end
+
+    def sync_operation?(method, path)
+      SYNC_ONLY_OPERATIONS.any? { |verb, pattern| verb == method && pattern.match?(path) }
     end
 
     def perform(method, path, query: nil, form: nil)

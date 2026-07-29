@@ -6,15 +6,12 @@ module GrommunioAdminApi
   #
   # Not thread-safe: use one client per service or job.
   class Client
-    MODES = %i[read_only sync_only].freeze
-
     attr_reader :mode, :organizations, :domains, :users, :ldap
 
+    # The mutation policy is validated and enforced by Connection.
     def initialize(base_url:, username: nil, password: nil, mode: :read_only, **)
-      raise ArgumentError, "unsupported mode: #{mode.inspect}" unless MODES.include?(mode)
-
-      @mode = mode
       @connection = Connection.new(base_url:, username:, password:, mode:, **)
+      @mode = mode
       @organizations = Api::Organizations.new(@connection)
       @domains = Api::Domains.new(@connection)
       @users = Api::Users.new(@connection)
