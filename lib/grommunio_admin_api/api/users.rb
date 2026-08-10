@@ -6,9 +6,11 @@ module GrommunioAdminApi
     class Users < Base
       # GET /domains/{domainID}/users
       #
+      # @param properties [String, nil] comma-separated list of user
+      #   properties to include in the response (e.g. "displayname,smtpaddress")
       # @return [List<Resources::User>]
-      def list(domain_id:, level: nil, limit: nil, offset: nil, username: nil)
-        query = { level: level, limit: limit, offset: offset, username: username }
+      def list(domain_id:, level: nil, limit: nil, offset: nil, username: nil, properties: nil)
+        query = { level: level, limit: limit, offset: offset, username: username, properties: properties }
         body = connection.request(:get, "/domains/#{domain_id}/users", query: query)
         List.new(body, resource_class: Resources::User)
       end
@@ -25,9 +27,10 @@ module GrommunioAdminApi
       # the same filters as #list.
       #
       # @return [Enumerator::Lazy<Resources::User>]
-      def all(domain_id:, level: nil, username: nil, page_size: Pagination::DEFAULT_PAGE_SIZE)
+      def all(domain_id:, level: nil, username: nil, properties: nil, page_size: Pagination::DEFAULT_PAGE_SIZE)
         Pagination.each_item(page_size: page_size) do |limit, offset|
-          list(domain_id: domain_id, level: level, username: username, limit: limit, offset: offset)
+          list(domain_id: domain_id, level: level, username: username, properties: properties,
+               limit: limit, offset: offset)
         end
       end
 

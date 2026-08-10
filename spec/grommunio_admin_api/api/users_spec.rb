@@ -34,6 +34,15 @@ RSpec.describe GrommunioAdminApi::Api::Users do
       expect(list).to have_been_requested.once
       expect(result.first.username).to eq("user@asc-test.ch")
     end
+
+    it "forwards the properties filter" do
+      list = stub_get("/domains/12/users", { "count" => 1, "data" => [user_payload] },
+                      query: { "properties" => "displayname,smtpaddress" })
+
+      client.users.list(domain_id: 12, properties: "displayname,smtpaddress")
+
+      expect(list).to have_been_requested.once
+    end
   end
 
   describe "#get" do
@@ -64,13 +73,14 @@ RSpec.describe GrommunioAdminApi::Api::Users do
     end
 
     it "forwards the list filters to every page request" do
-      query = { "level" => "2", "username" => "user@asc-test.ch" }
+      query = { "level" => "2", "username" => "user@asc-test.ch", "properties" => "displayname,smtpaddress" }
       page1 = stub_get("/domains/12/users", { "count" => 3, "data" => [{ "ID" => 1 }, { "ID" => 2 }] },
                        query: query.merge("limit" => "2", "offset" => "0"))
       page2 = stub_get("/domains/12/users", { "count" => 3, "data" => [{ "ID" => 3 }] },
                        query: query.merge("limit" => "2", "offset" => "2"))
 
-      users = client.users.all(domain_id: 12, level: 2, username: "user@asc-test.ch", page_size: 2).to_a
+      users = client.users.all(domain_id: 12, level: 2, username: "user@asc-test.ch",
+                               properties: "displayname,smtpaddress", page_size: 2).to_a
 
       expect(users.map(&:id)).to eq([1, 2, 3])
       expect(page1).to have_been_requested.once
