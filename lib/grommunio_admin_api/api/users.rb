@@ -75,12 +75,14 @@ module GrommunioAdminApi
 
       # PUT /domains/{domainID}/users/{userID}/delegates
       #
-      # Upstream offers no additive verb here, so this replaces the whole list —
-      # entries set elsewhere (webmail, admin web) are dropped unless the caller
-      # read them first. Compare #grant_store_access, which does not have that
-      # problem.
+      # REPLACES THE WHOLE LIST. Verified against a live instance: PUT ["a"]
+      # followed by PUT ["b"] leaves only "b", and PUT [] clears the list.
+      # Whatever the mailbox owner set in webmail or an administrator set in the
+      # admin web is gone unless the caller read the list first and merged.
+      # Upstream offers no additive verb here - #grant_store_access is the only
+      # one of the three lists that has one.
       #
-      # @param addresses [Array<String>] the complete new list
+      # @param addresses [Array<String>] the complete new list, not an addition
       # @return [nil] the API answers 200 without a body
       def set_delegates(domain_id:, user_id:, addresses:)
         connection.request(:put, "/domains/#{domain_id}/users/#{user_id}/delegates", json: address_array(addresses))
@@ -94,10 +96,14 @@ module GrommunioAdminApi
         address_list("/domains/#{domain_id}/users/#{user_id}/sendas")
       end
 
-      # PUT /domains/{domainID}/users/{userID}/sendas — full replacement, same
-      # caveat as #set_delegates.
+      # PUT /domains/{domainID}/users/{userID}/sendas
       #
-      # @param addresses [Array<String>] the complete new list
+      # REPLACES THE WHOLE LIST, exactly like #set_delegates - verified live:
+      # PUT ["a", "b"] then PUT ["a"] drops "b", and PUT [] clears the list.
+      # Send-as is impersonation, so a silently dropped entry is a permission
+      # the caller did not mean to revoke.
+      #
+      # @param addresses [Array<String>] the complete new list, not an addition
       # @return [nil] the API answers 200 without a body
       def set_sendas(domain_id:, user_id:, addresses:)
         connection.request(:put, "/domains/#{domain_id}/users/#{user_id}/sendas", json: address_array(addresses))
@@ -127,11 +133,15 @@ module GrommunioAdminApi
                            json: { username: address })
       end
 
-      # PUT /domains/{domainID}/users/{userID}/storeAccess — replaces the whole
-      # list. Prefer #grant_store_access / #revoke_store_access unless the
-      # caller genuinely owns every entry.
+      # PUT /domains/{domainID}/users/{userID}/storeAccess
       #
-      # @param addresses [Array<String>] the complete new list
+      # REPLACES THE WHOLE LIST. Verified live: with "a" already granted,
+      # PUT ["b"] answers "2 users updated" and leaves only "b"; PUT [] clears
+      # the list. Unlike the other two lists this one has additive verbs -
+      # prefer #grant_store_access / #revoke_store_access unless the caller
+      # genuinely owns every entry.
+      #
+      # @param addresses [Array<String>] the complete new list, not an addition
       # @return [nil] the API answers 200 without a body
       def set_store_access(domain_id:, user_id:, addresses:)
         connection.request(:put, "/domains/#{domain_id}/users/#{user_id}/storeAccess",
