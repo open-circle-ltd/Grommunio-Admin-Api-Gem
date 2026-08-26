@@ -1,6 +1,6 @@
 # GrommunioAdminApi
 
-Minimal Ruby client for the [Grommunio Admin API](https://docs.grommunio.com/), built for MSAS Cockpit V1: connection diagnostics, read-only organization/domain/user inventory, LDAP candidate search, targeted LDAP user import, and targeted user downsync. No Rails dependency, no runtime dependencies — Ruby stdlib only.
+Minimal Ruby client for the [Grommunio Admin API](https://docs.grommunio.com/), built for MSAS Cockpit: connection diagnostics, read-only organization/domain/user inventory, LDAP candidate search, targeted LDAP user import, targeted user downsync, direct user creation, and the three per-mailbox permission lists. No Rails dependency, no runtime dependencies — Ruby stdlib only.
 
 ## Installation
 
@@ -40,13 +40,20 @@ client.users.all(domain_id: 12, level: 2)      # every user of one domain
 
 ### Safety modes
 
-The client supports exactly two modes; there is no unrestricted mode and no
-generic `get`/`request` escape hatch.
+Three modes, and no generic `get`/`request` escape hatch.
 
 - `mode: :read_only` (default) — every mutation is rejected with
-  `ReadOnlyModeError` before any socket access, including login.
+  `ReadOnlyModeError` before any socket access, except the login itself.
 - `mode: :sync_only` — permits only the two targeted sync writes below;
   any other write raises `SyncOperationNotAllowedError` before HTTP.
+- `mode: :full_write` — permits every mutation this gem exposes a method for.
+  It carries **no** operation allowlist, so the per-area API classes are the
+  only curated surface, and this gem deliberately exposes no user deletion.
+  Note that `Connection#request` is public, so that curation is a convention,
+  not an enforced boundary.
+
+An unknown mode is rejected by the constructor, and the guard fails closed for
+one that reaches it anyway.
 
 ```ruby
 sync_client = GrommunioAdminApi::Client.new(base_url: ..., username: ..., password: ..., mode: :sync_only)
@@ -61,6 +68,40 @@ user = sync_client.ldap.import_user(
 sync_client.users.downsync(domain_id: 12, user_id: user.id)
 ```
 
+```ruby
+write_client = GrommunioAdminApi::Client.new(base_url: ..., username: ..., password: ..., mode: :full_write)
+
+# A shared mailbox is status 4. userInit declares no required field and its
+# "properties" bag is open, so the payload is passed through verbatim.
+mailbox = write_client.users.create(
+  domain_id: 12,
+  attributes: { "username" => "info@example.com", "status" => 4,
+                "properties" => { "displayname" => "Info" } }
+)
+
+# Like #import_user and #downsync, this returns a typed User for a user-shaped
+# response and a plain Resource for a 2xx that carries no user data - so check
+# before relying on the upstream ID.
+raise "no upstream ID" unless mailbox.is_a?(GrommunioAdminApi::Resources::User)
+
+write_client.users.delegates(domain_id: 12, user_id: mailbox.id)      # => ["kim@example.com"]
+write_client.users.grant_store_access(domain_id: 12, user_id: mailbox.id, address: "kim@example.com")
+```
+
+### The three permission lists are not exclusively yours
+
+Delegates, send-as and additional store owners can also be changed by the
+mailbox owner in webmail and by an administrator in the admin web. Upstream
+offers only `PUT` for delegates and send-as, which replaces the whole list —
+so `set_delegates` / `set_sendas` silently drop entries somebody else added
+unless you read the list first and merge. Store access additionally offers
+additive verbs (`grant_store_access`, `revoke_store_access`); prefer those.
+
+`delegates` and `sendas` return plain `Array<String>` rather than a `List`,
+because the payload items are strings: hydrating them into `Resource` objects
+would produce values whose field access silently misbehaves. `store_access`
+returns objects (`memberID`, `displayName`, `username`) and stays a `List`.
+
 ### Authentication lifecycle
 
 Login (`POST /login`, form-encoded) happens lazily before the first request
@@ -72,7 +113,7 @@ token. Passwords and tokens never appear in `inspect`, `to_s`, or error
 messages — `login!` returns `true` rather than the response body, so the
 token cannot be logged by accident.
 
-### V1 operation index
+### Operation index
 
 | Client method | HTTP operation |
 |---|---|
@@ -88,6 +129,15 @@ token cannot be logged by accident.
 | `client.ldap.search` | `GET /domains/ldap/search` |
 | `client.ldap.import_user` | `POST /domains/ldap/importUser` |
 | `client.users.downsync` | `PUT /domains/{domainID}/users/{userID}/downsync` |
+| `client.users.create` | `POST /domains/{domainID}/users` |
+| `client.users.delegates` | `GET /domains/{domainID}/users/{userID}/delegates` |
+| `client.users.set_delegates` | `PUT /domains/{domainID}/users/{userID}/delegates` |
+| `client.users.sendas` | `GET /domains/{domainID}/users/{userID}/sendas` |
+| `client.users.set_sendas` | `PUT /domains/{domainID}/users/{userID}/sendas` |
+| `client.users.store_access` | `GET /domains/{domainID}/users/{userID}/storeAccess` |
+| `client.users.grant_store_access` | `POST /domains/{domainID}/users/{userID}/storeAccess` |
+| `client.users.set_store_access` | `PUT /domains/{domainID}/users/{userID}/storeAccess` |
+| `client.users.revoke_store_access` | `DELETE /domains/{domainID}/users/{userID}/storeAccess/{username}` |
 
 ### Errors
 
@@ -152,18 +202,15 @@ bundle exec rspec spec/live/v1_read_spec.rb
 
 # controlled LDAP import + downsync for a dedicated persistent test account
 GROMMUNIO_LIVE_SYNC=1 bundle exec rspec spec/live/v1_sync_spec.rb
+
+# controlled shared-mailbox creation; leaves a real object behind, because
+# this gem exposes no deletion - remove it in the admin web afterwards
+GROMMUNIO_LIVE_MUTATE=1 GROMMUNIO_LIVE_SHARED_MAILBOX=info.test@example.test \
+  bundle exec rspec spec/live/v1_write_spec.rb
 ```
 
 Without the environment variables the live examples are skipped with a
 clear reason.
-
-## V1 non-goals
-
-- No create, update, or delete for organizations, domains, users, contacts, or shared mailboxes
-- No full-domain, full-organization, or global LDAP downsync; no orphan deletion
-- No LDAP configuration, password changes, OOF, aliases, delegates, send-as, store access, mobile devices, public folders, mailing lists, roles, queues, service control, DBConf, license, logs, or TasQ API
-- No generic HTTP escape hatch on the public client
-- No Rails/Cockpit constants — the consuming application decides model classes and associations
 
 ## Development
 

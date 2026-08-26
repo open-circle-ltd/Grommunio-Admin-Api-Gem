@@ -26,6 +26,18 @@ module ApiHelpers
     stub.to_return(status: 200, body: JSON.generate(body))
   end
 
+  # Stubs a mutating request. json: asserts the exact outgoing JSON body and
+  # its content type; body: nil means the endpoint answers without one.
+  def stub_write(verb, path, status: 200, body: nil, json: nil)
+    options = { headers: { "X-Csrf-Token" => CSRF } }
+    if json
+      options[:headers]["Content-Type"] = "application/json"
+      options[:body] = JSON.generate(json)
+    end
+    stub_request(verb, "#{BASE}#{path}").with(**options)
+                                        .to_return(status: status, body: body.nil? ? "" : JSON.generate(body))
+  end
+
   # Proves a guard rejected an operation before opening a socket — no login
   # request either.
   def expect_no_http_requests
