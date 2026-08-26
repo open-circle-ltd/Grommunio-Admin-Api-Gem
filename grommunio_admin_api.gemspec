@@ -9,8 +9,9 @@ Gem::Specification.new do |spec|
   spec.email = ["christian.siegrist@open-circle.ch"]
 
   spec.summary = "Minimal client for the Grommunio Admin API"
-  spec.description = "Read-only inventory, LDAP candidate search, targeted LDAP user import, " \
-                     "and targeted user downsync against the Grommunio Admin API."
+  spec.description = "Organization, domain and user inventory, LDAP candidate search, targeted " \
+                     "LDAP user import, targeted user downsync, direct user creation, and the " \
+                     "three per-mailbox permission lists against the Grommunio Admin API."
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.2.0"
 
