@@ -9,5 +9,8 @@
 /tmp/
 *.gem
 
+# Live-test credentials
+.env
+
 # rspec failure tracking
 .rspec_status
