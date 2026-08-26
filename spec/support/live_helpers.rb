@@ -10,7 +10,7 @@ module LiveHelpers
   ].freeze
 
   def skip_unless_live_env!(*extra)
-    missing = (REQUIRED_READ_ENV + extra).reject { |name| ENV.fetch(name, nil) }
+    missing = (REQUIRED_READ_ENV + extra).select { |name| ENV.fetch(name, "").strip.empty? }
     skip "live environment not configured (missing: #{missing.join(", ")})" unless missing.empty?
 
     WebMock.allow_net_connect!
