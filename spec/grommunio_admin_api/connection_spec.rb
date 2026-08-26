@@ -42,7 +42,11 @@ RSpec.describe GrommunioAdminApi::Connection do
       expect { build_connection(mode: "read_only") }.to raise_error(ArgumentError, /mode/)
     end
 
-    it "blocks writes for any mode that is not sync_only" do
+    it "accepts full_write" do
+      expect(build_connection(mode: :full_write).mode).to eq(:full_write)
+    end
+
+    it "fails closed for an unknown mode that slipped past the constructor" do
       conn = build_connection
       conn.instance_variable_set(:@mode, :some_future_mode)
 
@@ -51,6 +55,119 @@ RSpec.describe GrommunioAdminApi::Connection do
       end.to raise_error(GrommunioAdminApi::SyncOperationNotAllowedError)
 
       expect(a_request(:any, /.+/)).not_to have_been_made
+    end
+  end
+
+  describe "mutation policy per mode" do
+    let(:create_path) { "/domains/12/users" }
+
+    it "rejects a write in read_only mode before any socket access" do
+      expect { connection.request(:post, create_path, json: { username: "x@y.ch" }) }
+        .to raise_error(GrommunioAdminApi::ReadOnlyModeError, %r{POST /domains/12/users})
+
+      expect(a_request(:any, /.+/)).not_to have_been_made
+    end
+
+    it "rejects a non-allowlisted write in sync_only mode before any socket access" do
+      expect { build_connection(mode: :sync_only).request(:post, create_path, json: {}) }
+        .to raise_error(GrommunioAdminApi::SyncOperationNotAllowedError)
+
+      expect(a_request(:any, /.+/)).not_to have_been_made
+    end
+
+    it "permits any write in full_write mode, including the sync operations" do
+      stub_login
+      create = stub_request(:post, "#{base}#{create_path}").to_return(status: 201, body: JSON.generate("ID" => 1))
+      import = stub_request(:post, "#{base}/domains/ldap/importUser").to_return(status: 200, body: "{}")
+      conn = build_connection(mode: :full_write)
+
+      conn.request(:post, create_path, json: { username: "x@y.ch" })
+      conn.request(:post, "/domains/ldap/importUser")
+
+      expect(create).to have_been_requested.once
+      expect(import).to have_been_requested.once
+    end
+  end
+
+  describe "verb normalization" do
+    it "guards an uppercase or string verb like the symbol form" do
+      [:POST, "post", :Post, "DELETE"].each do |verb|
+        expect { connection.request(verb, "/domains/12/users", json: { username: "x@y.ch" }) }
+          .to raise_error(GrommunioAdminApi::ReadOnlyModeError)
+      end
+
+      expect(a_request(:any, /.+/)).not_to have_been_made
+    end
+
+    it "sends the CSRF token for an uppercase verb" do
+      stub_login
+      write = stub_request(:post, "#{base}/domains/12/users")
+              .with(headers: { "X-Csrf-Token" => csrf })
+              .to_return(status: 201, body: JSON.generate("ID" => 1))
+
+      build_connection(mode: :full_write).request(:POST, "/domains/12/users", json: { username: "x@y.ch" })
+
+      expect(write).to have_been_requested.once
+    end
+  end
+
+  describe "CSRF token on login" do
+    def stub_login_without_csrf
+      stub_request(:post, "#{base}/login")
+        .to_return(status: 200, body: JSON.generate("grommunioAuthJwt" => jwt))
+    end
+
+    it "rejects a csrf-less login for a writing mode" do
+      stub_login_without_csrf
+
+      expect { build_connection(mode: :full_write).login! }
+        .to raise_error(GrommunioAdminApi::AuthenticationError, /CSRF/)
+    end
+
+    it "accepts a csrf-less login in read_only mode, where no write can need it" do
+      stub_login_without_csrf
+
+      expect(build_connection.login!).to be(true)
+    end
+  end
+
+  describe "JSON request bodies" do
+    before { stub_login }
+
+    it "encodes a hash body as JSON and sends the CSRF token" do
+      write = stub_request(:post, "#{base}/domains/12/users")
+              .with(body: JSON.generate("username" => "info@asc-test.ch", "status" => 4),
+                    headers: { "Content-Type" => "application/json", "X-Csrf-Token" => csrf })
+              .to_return(status: 201, body: JSON.generate("ID" => 77))
+
+      body = build_connection(mode: :full_write)
+             .request(:post, "/domains/12/users", json: { username: "info@asc-test.ch", status: 4 })
+
+      expect(write).to have_been_requested.once
+      expect(body).to eq("ID" => 77)
+    end
+
+    it "encodes a bare array body, as the delegates and sendas endpoints expect" do
+      write = stub_request(:put, "#{base}/domains/12/users/44/delegates")
+              .with(body: JSON.generate(["a@asc-test.ch"]),
+                    headers: { "Content-Type" => "application/json" })
+              .to_return(status: 200, body: "")
+
+      result = build_connection(mode: :full_write)
+               .request(:put, "/domains/12/users/44/delegates", json: ["a@asc-test.ch"])
+
+      expect(write).to have_been_requested.once
+      expect(result).to be_nil
+    end
+
+    it "keeps form encoding for the login, which carries no JSON payload" do
+      login = stub_request(:post, "#{base}/login")
+              .with(headers: { "Content-Type" => "application/x-www-form-urlencoded" })
+              .to_return(status: 200, body: JSON.generate("grommunioAuthJwt" => jwt, "csrf" => csrf))
+
+      build_connection(mode: :full_write).login!
+
+      expect(login).to have_been_requested.once
     end
   end
 
@@ -181,6 +298,40 @@ RSpec.describe GrommunioAdminApi::Connection do
       expect(connection.request(:get, "/status")).to eq("status" => "ok")
       expect(login).to have_been_requested.twice
       expect(status).to have_been_requested.twice
+    end
+
+    it "replays the idempotent sync writes after a 401" do
+      login = stub_login
+      import = stub_request(:post, "#{base}/domains/ldap/importUser")
+               .to_return({ status: 401, body: "{}" }, { status: 200, body: '{"ID":44}' })
+
+      build_connection(mode: :sync_only).request(:post, "/domains/ldap/importUser")
+
+      expect(login).to have_been_requested.twice
+      expect(import).to have_been_requested.twice
+    end
+
+    it "never replays a create, which may already have been applied upstream" do
+      stub_login
+      create = stub_request(:post, "#{base}/domains/12/users").to_return(status: 401, body: "{}")
+
+      expect do
+        build_connection(mode: :full_write).request(:post, "/domains/12/users", json: { username: "x@y.ch" })
+      end.to raise_error(GrommunioAdminApi::AuthenticationError)
+
+      expect(create).to have_been_requested.once
+    end
+
+    it "never replays a store access grant" do
+      stub_login
+      grant = stub_request(:post, "#{base}/domains/12/users/44/storeAccess").to_return(status: 401, body: "{}")
+
+      expect do
+        build_connection(mode: :full_write).request(:post, "/domains/12/users/44/storeAccess",
+                                                    json: { username: "kim@y.ch" })
+      end.to raise_error(GrommunioAdminApi::AuthenticationError)
+
+      expect(grant).to have_been_requested.once
     end
 
     it "raises AuthenticationError after the replay also returns 401" do

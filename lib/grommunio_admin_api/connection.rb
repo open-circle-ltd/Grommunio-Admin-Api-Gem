@@ -10,11 +10,12 @@ module GrommunioAdminApi
   #
   # Owns the session lifecycle (form-encoded POST /login, JWT cookie, CSRF
   # token on writes, one automatic re-login and replay on 401), the mutation
-  # policy (read_only / sync_only), and the HTTP status -> error mapping.
+  # policy (read_only / sync_only / full_write), and the HTTP status -> error
+  # mapping.
   #
   # Not thread-safe: use one client per service or job.
   class Connection
-    MODES = %i[read_only sync_only].freeze
+    MODES = %i[read_only sync_only full_write].freeze
     MUTATING_METHODS = %i[post put patch delete].freeze
     SUCCESS_STATUSES = [200, 201, 202, 204].freeze
     STATUS_ERRORS = {
@@ -28,10 +29,14 @@ module GrommunioAdminApi
 
     # The only writes a sync_only client may perform, matched on the actual
     # HTTP method and normalized path — never on a symbolic operation name.
+    # full_write has no counterpart here on purpose: it permits every mutation
+    # the gem exposes a method for, so the method surface is its only boundary.
     SYNC_ONLY_OPERATIONS = [
       [:post, %r{\A/domains/ldap/importUser\z}],
       [:put, %r{\A/domains/\d+/users/\d+/downsync\z}]
     ].freeze
+
+    REPLAYABLE_MUTATIONS = SYNC_ONLY_OPERATIONS
 
     attr_reader :base_url, :username, :mode, :verify_ssl, :open_timeout, :read_timeout
 
@@ -75,15 +80,19 @@ module GrommunioAdminApi
     # empty bodies). Raises the mapped ApiError subclass on non-2xx responses
     # and ConnectionError on transport failures. The mutation policy runs
     # before login or any other socket access.
-    def request(method, path, query: nil, form: nil)
+    def request(method, path, query: nil, form: nil, json: nil)
+      # Normalize first: the guard and the CSRF header match on this symbol,
+      # while Net::HTTP.const_get(method.capitalize) accepts :POST and "post"
+      # just as happily - so an unnormalized verb would skip both.
+      method = method.to_s.downcase.to_sym
       guard_mutation!(method, path)
       login! unless logged_in?
 
-      response = perform(method, path, query: query, form: form)
-      if response.code.to_i == 401
+      response = perform(method, path, query: query, form: form, json: json)
+      if response.code.to_i == 401 && replayable?(method, path)
         # Session expired server-side: re-login once and replay the request.
         login!
-        response = perform(method, path, query: query, form: form)
+        response = perform(method, path, query: query, form: form, json: json)
       end
 
       handle(method, path, response)
@@ -98,9 +107,7 @@ module GrommunioAdminApi
       @jwt = nil
       @csrf = nil
       body = handle(:post, "/login", perform(:post, "/login", form: { user: @username, pass: @password }))
-      unless body.is_a?(Hash) && body["grommunioAuthJwt"]
-        raise AuthenticationError.new("login response did not include a session token", status: nil, body: nil)
-      end
+      validate_login!(body)
 
       @jwt = body["grommunioAuthJwt"]
       @csrf = body["csrf"]
@@ -120,10 +127,23 @@ module GrommunioAdminApi
 
     private
 
-    # Fail-closed: only sync_only may write, and only the allowlisted
-    # operations. Any other mode blocks every write.
+    # write needs a csrf token
+    def validate_login!(body)
+      unless body.is_a?(Hash) && body["grommunioAuthJwt"]
+        raise AuthenticationError.new("login response did not include a session token", status: nil, body: nil)
+      end
+      return unless body["csrf"].nil? && mode != :read_only
+
+      raise AuthenticationError.new("login response carried no CSRF token; writes would be rejected upstream",
+                                    status: nil, body: nil)
+    end
+
+    # Fail-closed: full_write may write anything, sync_only only the
+    # allowlisted operations, and every other mode - including one that is not
+    # in MODES at all - nothing.
     def guard_mutation!(method, path)
       return unless MUTATING_METHODS.include?(method)
+      return if mode == :full_write
 
       operation = "#{method.to_s.upcase} #{path}"
       raise ReadOnlyModeError, "#{operation} rejected: client is in read_only mode" if mode == :read_only
@@ -133,13 +153,19 @@ module GrommunioAdminApi
             "#{operation} rejected: mode #{mode.inspect} permits only targeted import and downsync"
     end
 
+    def replayable?(method, path)
+      return true unless MUTATING_METHODS.include?(method)
+
+      REPLAYABLE_MUTATIONS.any? { |verb, pattern| verb == method && pattern.match?(path) }
+    end
+
     def sync_operation?(method, path)
       SYNC_ONLY_OPERATIONS.any? { |verb, pattern| verb == method && pattern.match?(path) }
     end
 
-    def perform(method, path, query: nil, form: nil)
+    def perform(method, path, query: nil, form: nil, json: nil)
       uri = build_uri(path, query)
-      http(uri).request(build_request(method, uri, form: form))
+      http(uri).request(build_request(method, uri, form: form, json: json))
     rescue Timeout::Error, SocketError, IOError, SystemCallError, OpenSSL::SSL::SSLError => e
       raise ConnectionError, "#{method.to_s.upcase} #{path} failed: #{e.class}"
     end
@@ -153,16 +179,26 @@ module GrommunioAdminApi
       raise ArgumentError, "invalid request path: #{path.inspect}"
     end
 
-    def build_request(method, uri, form: nil)
+    def build_request(method, uri, form: nil, json: nil)
       http_request = Net::HTTP.const_get(method.capitalize).new(uri)
       http_request["Accept"] = "application/json"
       http_request["Cookie"] = "grommunioAuthJwt=#{@jwt}" if logged_in?
       http_request["X-Csrf-Token"] = @csrf if @csrf && MUTATING_METHODS.include?(method)
-      if form
+      apply_body(http_request, form: form, json: json)
+      http_request
+    end
+
+    # json wins if both are given; only POST /login uses form encoding, and it
+    # never carries a JSON payload. An Array is a valid json: value - the
+    # delegates and sendas endpoints take a bare JSON array as their body.
+    def apply_body(http_request, form:, json:)
+      if json
+        http_request["Content-Type"] = "application/json"
+        http_request.body = JSON.generate(json)
+      elsif form
         http_request["Content-Type"] = "application/x-www-form-urlencoded"
         http_request.body = URI.encode_www_form(form)
       end
-      http_request
     end
 
     def http(uri)
